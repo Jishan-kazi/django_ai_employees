@@ -220,6 +220,7 @@
     .agent-message{
       background-color: #f3f4f6;
       border-radius: 0 10px 10px 10px;
+      white-space: pre-line;
     }
 
 
@@ -329,15 +330,22 @@
 
         {% comment %} Chat Area {% endcomment %}
         <div id="chat-messages" class="chat-messages p-3 d-flex flex-column gap-2">
-          <div class="agent-message p-2 px-3" style="font-size:13px; max-width: 80%">
-            Hi User, I'm Maya. How can I help you with your order today?
-          </div>
+          {% if conversation %}
+            {% for message in previous_messages %}
+              <div class="{% if message.role == 'assistant' %}agent-message {% else %}customer-message{% endif %} p-2 px-3" style="font-size:13px; max-width: 80%">{{message.content}}</div>
+            {% endfor %}
+          {% else %}
+            <div class="agent-message p-2 px-3" style="font-size:13px; max-width: 80%">
+              Hi User, I'm Maya. How can I help you with your order today?
+            </div>
+          {% endif %}
+
         </div>
 
         {% comment %} Chat Footer {% endcomment %}
         <div class="card-footer d-flex">
           <input type="text" id="chat-input" class="form-control form-control-sm" placeholder="Type Your Message....."/>
-          <button class="btn btn-dark btn-sm px-3" onclick="sendMessage()">
+          <button id="sendBtn" class="btn btn-dark btn-sm px-3" onclick="sendMessage()">
             Send
           </button>
         </div>
@@ -355,6 +363,9 @@
   function showChat(){
     document.getElementById('help-card').classList.add('d-none');
     document.getElementById('chat-box').classList.remove('d-none');
+    
+    let chat_box = document.getElementById('chat-messages');
+    chat_box.scrollTop = chat_box.scrollHeight;
   }
 
 
@@ -371,14 +382,53 @@
     messages.appendChild(div);
   }
 
+  function showTyping(){
+    document.getElementById('chat-messages').insertAdjacentHTML('beforeend' , `
+    <div id="typing_indicator" class="agent-message p-2 px-3" style="font-size:13px;max-width:85%">Typing.....</div>
+    `)
+  }
 
-  function sendMessage(){
+  function hideTyping(){
+    document.getElementById('typing_indicator').remove();
+  }
+
+  async function sendMessage(){
     let input = document.getElementById('chat-input');
     let msg = input.value.trim();
-
+    
     if (!msg) return;
+    let sendBtn = document.getElementById('sendBtn')
+    sendBtn.disabled = true;
 
     appendMessage(msg, 'customer');
+    showTyping();
+
+    try{
+      let response = await fetch('{% url "chat" order.id %}', {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{csrf_token}}'
+        },
+        body: JSON.stringify({message: msg})
+      })
+
+      data = await response.json();
+
+      hideTyping();
+      appendMessage(data.reply, 'agent')
+
+      const chatbox = document.getElementById('chat-messages')
+      chatbox.scrollTop = chatbox.scrollHeight;
+
+    }catch(error){
+      console.error(error)
+      hideTyping();
+      appendMessage('Something Went Wrong', 'agent')
+    }finally{
+      sendBtn.disabled = false;
+    }
+
     input.value = '';
 
   }
