@@ -9,7 +9,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_display = ['user', 'product_name', 'amount', 'status', 'carrier', 'tracking_number']
 
 class RefundRequestAdmin(admin.ModelAdmin):
-    list_display = ['order', 'user', 'reason', 'status']
+    list_display = ['order', 'user', 'reason', 'status', 'created_at']
 
 
 admin.site.register(Product, ProductAdmin)
