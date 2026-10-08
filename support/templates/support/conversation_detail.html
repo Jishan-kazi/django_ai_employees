@@ -1,0 +1,217 @@
+{% extends 'support/layout/main_layout.html' %}
+
+{% block content %}
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <a href="{% url 'dashboard' %}" class="text-muted text-decoration-none" style="font-size:13px;">← Back</a>
+      <h5 class="fw-bold mb-0">Conversation #{{conversation.id}}</h5>
+      <span class="text-muted" style="font-size:13px;">{{conversation.user.first_name}} · Order #{{conversation.order.id}} · {{conversation.order.product_name}}</span>
+    </div>
+
+    
+
+    <!-- Two Column Layout -->
+    <div class="row g-3" style="height:calc(100vh - 160px);">
+
+      <!-- Left: Chat Transcript -->
+      <div class="col-md-6" style="max-height: calc(100vh - 150px)">
+        <div class="card h-100">
+          <div class="card-header fw-semibold" style="font-size:13px;">
+            Chat Transcript
+          </div>
+          <div class="card-body overflow-auto d-flex flex-column gap-3" id="chat-transcript">
+
+            {% for message in messages %}
+              {% if message.role == 'user' %}
+                <!-- Customer message -->
+                <div>
+                  <div style="font-size:11px;color:#adb5bd;margin-bottom:3px;">{{message.conversation.user.first_name}}</div>
+                  <div class="bg-light rounded p-2 px-3" style="font-size:13px;max-width:85%;">
+                    {{message.content}}
+                  </div>
+                </div>
+
+              {% elif message.role == 'assistant' %}
+                <!-- Agent message -->
+                <div class="text-end">
+                  <div style="font-size:11px;color:#adb5bd;margin-bottom:3px;">Maya (AI Agent)</div>
+                  <div class="rounded p-2 px-3 d-inline-block text-start" 
+                        style="font-size:13px;max-width:85%;background:#ede9fe;color:#3C3489;">
+                    {{message.content}}
+                  </div>
+                </div>
+              {% endif %}
+            {% endfor %}
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Agent Activity -->
+      <div class="col-md-6" style="max-height: calc(100vh - 150px)">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center gap-2" style="font-size:13px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#1D9E75;"></div>
+            <span class="fw-semibold">Agent Activity</span>
+          </div>
+          <div class="card-body overflow-auto" id="agent-activity">
+            {% for log in agentlogs %}
+            <!-- Log entry -->
+            <div class="mb-4">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                {% if log.event_type == 'tool_call' %}
+                  <span class="badge bg-primary" style="font-size:10px;">{{log.event_type}}</span>
+
+                {% elif log.event_type == 'tool_result' %}
+                  <span class="badge bg-secondary" style="font-size:10px;">{{log.event_type}}</span>
+
+                {% elif log.event_type == 'manager' %}
+                  <span class="badge bg-warning" style="font-size:10px;">{{log.event_type}}</span>
+
+                {% elif log.event_type == 'risk' %}
+                  <span class="badge bg-danger" style="font-size:10px;">{{log.event_type}}</span>
+
+                {% elif log.event_type == 'final' %}
+                  <span class="badge bg-success" style="font-size:10px;">{{log.event_type}}</span>
+                
+                {% endif %}
+                <span class="text-muted" style="font-size:11px;">{{log.created_at | date:"M d, Y h:i A"}}</span>
+              </div>
+              <p class="mb-0 text-muted" style="font-size:12px;">{{log.message}}</p>
+            </div>
+
+            {% endfor %}
+
+
+            
+
+
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+{% endblock %}
+
+{% block script %}
+    <script>
+      const showSpinner = () => {
+        const spinner = `<div class="spinner-border spinner-border-sm" role="status" id="spinner">
+          <span class="visually-hidden">Loading...</span>
+        </div>`;
+
+        const agentActivity = document.getElementById('agent-activity');
+        agentActivity.insertAdjacentHTML('beforeend', spinner)
+        agentActivity.scrollTop = agentActivity.scrollHeight;
+      }
+
+      const hideSpinner = () => {
+        document.getElementById('spinner')?.remove();
+      }
+
+      const appendMessage = (role, message, name=null) => {
+        let elementToPush = '';
+        if (role == 'user'){
+          elementToPush = `<div>
+            <div style="font-size:11px;color:#adb5bd;margin-bottom:3px;">${name}</div>
+            <div class="bg-light rounded p-2 px-3" style="font-size:13px;max-width:85%;">
+              ${message}
+            </div>
+          </div>`;
+        }else{
+          elementToPush = `<div class="text-end">
+            <div style="font-size:11px;color:#adb5bd;margin-bottom:3px;">Maya (AI Agent)</div>
+            <div class="rounded p-2 px-3 d-inline-block text-start" 
+                  style="font-size:13px;max-width:85%;background:#ede9fe;color:#3C3489;">
+              ${message}
+            </div>
+          </div>`;
+        }
+
+        const chatTranscript = document.getElementById('chat-transcript');
+        chatTranscript.insertAdjacentHTML('beforeend', elementToPush);
+        chatTranscript.scrollTop = chatTranscript.scrollHeight;
+      }
+      
+      const appendLog = (type, message) => {
+        const dateTime = new Date().toLocaleString('en-US', {
+          month: 'short',
+          day: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+
+        const eventColorCode = {
+          tool_call: 'bg-primary',
+          tool_result: 'bg-secondary',
+          manager: 'bg-warning',
+          risk: 'bg-danger',
+          final: 'bg-success'
+        }
+        
+        const event_color = eventColorCode[type] || 'bg-secondary'
+
+        const elementToPush = `
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="badge ${event_color}" style="font-size:10px;">${type}</span>
+              <span class="text-muted" style="font-size:11px;">${dateTime}</span>
+          </div>
+          <p class="mb-0 text-muted" style="font-size:12px;">${message}</p>
+        </div>
+        `;
+        const agentActivity = document.getElementById('agent-activity')
+        agentActivity.insertAdjacentHTML('beforeend', elementToPush)
+        agentActivity.scrollTop = agentActivity.scrollHeight;
+      }
+
+      const source = new EventSource('{% url "conversation_stream" conversation.id %}')
+      
+      source.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+
+        if (data.type == 'done'){
+          hideSpinner()
+          return;
+        }
+
+        hideSpinner();
+
+        if(data.type == 'user_message'){
+          appendMessage('user', data.message, data.name);
+        }else if(data.type == 'assistant_message'){
+          appendMessage('assistant', data.message);
+        }else{
+          appendLog(data.type, data.message)
+        }
+
+        if (data.type != 'final' && data.type != 'assistant_message'){
+          showSpinner()
+        }
+      }
+
+      source.onerror = () => {
+        console.log('SSE connection closed')
+        source.close()
+      }
+
+
+      document.addEventListener('DOMContentLoaded', function(){
+        const chatTranscript = document.getElementById("chat-transcript");
+        const agentActivity = document.getElementById("agent-activity");
+        
+        if (chatTranscript){
+          chatTranscript.scrollTop = chatTranscript.scrollHeight
+        }
+
+        if (agentActivity){
+          agentActivity.scrollTop = agentActivity.scrollHeight
+        }
+      })
+
+
+    </script>
+{% endblock %}

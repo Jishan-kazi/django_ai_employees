@@ -1,7 +1,8 @@
 from anthropic import Anthropic
 from django.conf import settings
 
-from support.models import Conversation
+from support.event_queue import publish
+from support.models import AgentLog, Conversation
 from .tools import get_order_details, get_refund_history, check_delivery_status, get_customer_risk_profile
 
 client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -182,7 +183,7 @@ RISK_TOOLS = [
 
 
 # execute_tool() function --> bridge between claude & tools
-def execute_tool(tool_name, tool_input):
+def execute_tool(tool_name, tool_input, conversation_id=None):
     if (tool_name == 'get_order_details'):
       return get_order_details(tool_input['order_id'])
     
@@ -195,14 +196,14 @@ def execute_tool(tool_name, tool_input):
     if tool_name == 'escalate_to_manager':
        case_summary = tool_input['case_summary']
        print('escalating to manager====>', case_summary)
-       decision = run_manager_agent(case_summary)
+       decision = run_manager_agent(case_summary, conversation_id)
        print('decision=====>', decision)
        return decision
     
     if tool_name == 'assess_fraud_risk':
         user_id = tool_input['user_id']
         print('starting fraud assessment for user id', user_id)
-        verdict = run_risk_agent(user_id)
+        verdict = run_risk_agent(user_id, conversation_id)
         print('verdict===>', verdict)
         return verdict
 
@@ -242,12 +243,25 @@ def run_support_agent(user_message, conv_id, user_id, order_id):
             for block in response.content:
               if block.type == 'tool_use':
 
-                 result = execute_tool(block.name, block.input)
-                 tool_result.append({
+                # publish event
+                event = {'type': 'tool_call', 'message': f"Calling tool {block.name} with input {block.input}"}
+                publish(conversation.id, event)
+                # log tool calling
+                AgentLog.objects.create(conversation=conversation, event_type='tool_call', message=f"Calling tool {block.name} with input {block.input}")
+
+                result = execute_tool(block.name, block.input, conv_id)
+
+                # publish event
+                event = {'type': 'tool_result', 'message': f"Tool {block.name} returned: {str(result)[:200]}"}
+                publish(conversation.id, event)
+                # log tool result
+                AgentLog.objects.create(conversation=conversation, event_type='tool_result', message=f"Tool {block.name} returned: {str(result)[:200]}")
+
+                tool_result.append({
                     'type': 'tool_result',
                     'tool_use_id': block.id,
                     'content': str(result)
-                 })
+                })
             
             conversation_messages.append({
                 'role': 'assistant',
@@ -260,16 +274,32 @@ def run_support_agent(user_message, conv_id, user_id, order_id):
                 
 
         else:
+
             final_reply = next(
                 (block.text
                 for block in response.content
                 if block.type == "text"),
                 ""
             )
+
+            # publish event
+            event = {"type": "final", "message": f"Support Agent Final Reply: {final_reply}"}
+            publish(conversation.id, event)
+            # log final reply
+            AgentLog.objects.create(conversation=conversation, event_type='final', message=f"Support Agent Final Reply: {str(final_reply)[:200]}")
+
             return final_reply
         
 
-def run_manager_agent(case_summary):
+def run_manager_agent(case_summary, conversation_id):
+    conv = Conversation.objects.get(id=conversation_id)
+
+    # publish event
+    event = {'type': 'manager', 'message': f"Manager received case for review: {str(case_summary)[:200]}"}
+    publish(conv.id, event)
+    # log manage receive case
+    AgentLog.objects.create(conversation=conv, event_type="manager", message=f"Manager received case for review: {str(case_summary)[:200]}")
+
     manager_messages = [{
        'role': 'user',
        'content': case_summary
@@ -288,7 +318,14 @@ def run_manager_agent(case_summary):
             tool_result = []
             for block in response.content:
               if block.type == 'tool_use':
-                result = execute_tool(block.name, block.input)
+
+                # publish event
+                event = {'type': 'manager', 'message': f"Manager tool call {block.name}: Consulting risk agent for fraud assessment..."}
+                publish(conv.id, event)
+                # log manager tool call
+                AgentLog.objects.create(conversation=conv, event_type="manager", message=f"Manager tool call {block.name}: Consulting risk agent for fraud assessment...")
+
+                result = execute_tool(block.name, block.input, conversation_id)
                 tool_result.append({
                    'type': 'tool_result',
                    'tool_use_id': block.id,
@@ -306,11 +343,25 @@ def run_manager_agent(case_summary):
             })
 
         else:
-           final_reply = next((block.text for block in response.content if block.type=='text'), '')
-           return final_reply
+            final_reply = next((block.text for block in response.content if block.type=='text'), '')
+
+            # publish event
+            event = {'type': 'manager', 'message': f"Manager Decision:{str(final_reply)[:200]}"}
+            publish(conv.id, event)
+            #log manager final decision
+            AgentLog.objects.create(conversation=conv, event_type="manager", message=f"Manager Decision:{str(final_reply)[:200]}")
+            return final_reply
         
 
-def run_risk_agent(user_id):
+def run_risk_agent(user_id, conversation_id):
+    conv = Conversation.objects.get(id=conversation_id)
+
+    # publish event
+    event = {'type': 'risk', 'message': f"Risk agent received case: Starting fraud assessment for user {user_id}"}
+    publish(conv.id, event)
+    # log risk assessment starting
+    AgentLog.objects.create(conversation=conv, event_type="risk", message=f"Risk agent received case: Starting fraud assessment for user {user_id}")
+
     risk_messages = [
         {
             'role': 'user',
@@ -332,6 +383,13 @@ def run_risk_agent(user_id):
             tool_result = []
             for block in response.content:
               if block.type == 'tool_use':
+
+                # publish event
+                event = {'type': 'risk', 'message': f"Risk agent tool call {block.name}: To get customer risk profile"}
+                publish(conv.id, event)
+                # log risk agent tool call
+                AgentLog.objects.create(conversation=conv, event_type="risk", message=f"Risk agent tool call {block.name}: To get customer risk profile")
+
                 print('executing risk tool', block.name)
                 print('risk tool input', block.input)
                 result = execute_tool(block.name, block.input)
@@ -358,6 +416,12 @@ def run_risk_agent(user_id):
                 (block.text for block in response.content if block.type == 'text'),
                 ''
             )
+
+            # publish event
+            event = {'type': 'risk', 'message': f"Risk agent verdict: {str(final_reply)[:200]}"}
+            publish(conv.id, event)
+            # log risk agent final verdict
+            AgentLog.objects.create(conversation=conv, event_type="risk", message=f"Risk agent verdict: {str(final_reply)[:200]}")
 
             return final_reply
 

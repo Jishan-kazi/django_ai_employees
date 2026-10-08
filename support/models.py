@@ -11,6 +11,14 @@ class Conversation(models.Model):
     def __str__(self):
         return f'Conversation for #{self.id} - User {self.user.username} - Order {self.order.id}'
     
+    @property
+    def manager_involved(self):
+        return self.agentlogs.filter(event_type = 'manager').exists()
+    
+    @property
+    def risk_assessed(self):
+        return self.agentlogs.filter(event_type='risk').exists()
+    
 
 class Message(models.Model):
     ROLE_CHOICES = [
