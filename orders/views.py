@@ -1,9 +1,13 @@
 from django.shortcuts import render, get_object_or_404
-
+from django.contrib.auth import views as auth_views
 from support.models import Conversation
 from .models import Order, RefundRequest
 from django.contrib.auth.decorators import login_required
 # Create your views here.
+
+class CustomLoginView(auth_views.LoginView):
+    template_name = 'auth/login.html'
+    redirect_authenticated_user = True
 
 @login_required
 def order_list(request):
