@@ -397,6 +397,8 @@
     let msg = input.value.trim();
     
     if (!msg) return;
+    input.value = '';
+    
     let sendBtn = document.getElementById('sendBtn')
     sendBtn.disabled = true;
 
@@ -429,7 +431,7 @@
       sendBtn.disabled = false;
     }
 
-    input.value = '';
+    
 
   }
 
