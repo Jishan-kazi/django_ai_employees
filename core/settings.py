@@ -147,5 +147,5 @@ STATICFILES_STORAGE='whitenoise.storage.StaticFilesStorage'
 
 
 CSRF_TRUSTED_ORIGINS = {
-    'https://djangoaiemployees-production-cc2c.up.railway.app/'
+    'https://djangoaiemployees-production-cc2c.up.railway.app'
 }
