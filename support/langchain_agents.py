@@ -79,7 +79,19 @@ def run_support_agent_langchain(user_message, conv_id, user_id, order_id):
         config=config,
     )
 
-    final_reply = result['messages'][-1].content
+    
+    final_message = result['messages'][-1]
+    content = final_message.content
+
+    if isinstance(content, str):
+        final_reply = content
+    else:
+        final_reply = "\n".join(
+            block["text"]
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+
 
     print('support agent final_reply===>', final_reply)
 
