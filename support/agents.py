@@ -1,7 +1,7 @@
 from anthropic import Anthropic
 from django.conf import settings
 
-from support.event_queue import publish
+from support.event_queue import DONE, publish
 from support.models import AgentLog, Conversation
 from .tools import get_order_details, get_refund_history, check_delivery_status, get_customer_risk_profile, search_knowledge_base
 
@@ -302,6 +302,8 @@ def run_support_agent(user_message, conv_id, user_id, order_id):
             publish(conversation.id, event)
             # log final reply
             AgentLog.objects.create(conversation=conversation, event_type='final', message=f"Support Agent Final Reply: {str(final_reply)[:200]}")
+
+            publish(conversation.id, DONE)
 
             return final_reply
         

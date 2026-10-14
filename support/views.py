@@ -5,6 +5,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from orders.models import Order
 from support.agents import run_support_agent
 from support.event_queue import publish, subscribe, unsubscribe
+from support.langchain_agents import run_support_agent_langchain
 from support.models import Conversation, Message
 from django.contrib.admin.views.decorators import staff_member_required
 
@@ -28,7 +29,11 @@ def chat(request, order_id):
         Message.objects.create(conversation=conv, role='user', content=user_message)
 
         # send user message to llm
-        reply = run_support_agent(user_message, conv.id, request.user.id, order.id)
+        # reply = run_support_agent(user_message, conv.id, request.user.id, order.id)
+
+        reply = run_support_agent_langchain(user_message, conv.id, request.user.id, order.id)
+
+
 
         # publish event
         event = {'type': 'assistant_message', 'message': reply, 'name': 'Maya'}
